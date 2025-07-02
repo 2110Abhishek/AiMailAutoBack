@@ -15,6 +15,7 @@ app = Flask(__name__)
 CORS(app)
 
 uploads = {}
+stop_flags = {}  # <-- use this instead of file
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -42,13 +43,14 @@ def upload_files():
         "position": position
     }
 
+    stop_flags[sender_email] = False  # Reset the flag
+
     return jsonify({"message": "Files uploaded. Sending will begin..."})
 
 @app.route('/stop-sending', methods=['GET'])
 def stop_sending():
     sender_email = request.args.get('senderEmail')
-    with open(f"{sender_email}.stop", "w") as f:
-        f.write("stop")
+    stop_flags[sender_email] = True
     return jsonify({"message": "Stopping email sending..."})
 
 @app.route('/send-emails', methods=['GET'])
@@ -73,11 +75,9 @@ def send_emails():
 
     def generate():
         for to_email in email_set:
-            # Check if stop file exists
-            if os.path.exists(f"{sender_email}.stop"):
+            if stop_flags.get(sender_email):
                 yield f"data: Sending stopped by user.\n\n"
                 print(f"Sending stopped by user: {sender_email}")
-                os.remove(f"{sender_email}.stop")
                 break
 
             msg = MIMEMultipart()
@@ -111,8 +111,7 @@ def send_emails():
         os.remove(info["template"])
         os.remove(info["resume"])
         uploads.pop(sender_email, None)
-        if os.path.exists(f"{sender_email}.stop"):
-            os.remove(f"{sender_email}.stop")
+        stop_flags.pop(sender_email, None)
         yield f"data: DONE\n\n"
 
     return Response(generate(), mimetype='text/event-stream')
