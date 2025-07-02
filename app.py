@@ -15,7 +15,6 @@ app = Flask(__name__)
 CORS(app)
 
 uploads = {}
-stop_flags = {}
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -27,9 +26,9 @@ def upload_files():
     sender_password = request.form['senderPassword']
     position = request.form['position']
 
-    pdf_path = "contacts.pdf"
-    template_path = "template.txt"
-    resume_path = "resume.pdf"
+    pdf_path = f"{sender_email}_contacts.pdf"
+    template_path = f"{sender_email}_template.txt"
+    resume_path = f"{sender_email}_resume.pdf"
 
     pdf_file.save(pdf_path)
     template_file.save(template_path)
@@ -43,14 +42,13 @@ def upload_files():
         "position": position
     }
 
-    stop_flags[sender_email] = False
-
     return jsonify({"message": "Files uploaded. Sending will begin..."})
 
 @app.route('/stop-sending', methods=['GET'])
 def stop_sending():
     sender_email = request.args.get('senderEmail')
-    stop_flags[sender_email] = True
+    with open(f"{sender_email}.stop", "w") as f:
+        f.write("stop")
     return jsonify({"message": "Stopping email sending..."})
 
 @app.route('/send-emails', methods=['GET'])
@@ -75,9 +73,11 @@ def send_emails():
 
     def generate():
         for to_email in email_set:
-            if stop_flags.get(sender_email):
+            # Check if stop file exists
+            if os.path.exists(f"{sender_email}.stop"):
                 yield f"data: Sending stopped by user.\n\n"
                 print(f"Sending stopped by user: {sender_email}")
+                os.remove(f"{sender_email}.stop")
                 break
 
             msg = MIMEMultipart()
@@ -106,15 +106,16 @@ def send_emails():
 
             time.sleep(0.5)
 
+        # Cleanup
         os.remove(info["pdf"])
         os.remove(info["template"])
         os.remove(info["resume"])
         uploads.pop(sender_email, None)
-        stop_flags.pop(sender_email, None)
+        if os.path.exists(f"{sender_email}.stop"):
+            os.remove(f"{sender_email}.stop")
         yield f"data: DONE\n\n"
 
     return Response(generate(), mimetype='text/event-stream')
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
-
