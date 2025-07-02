@@ -1,6 +1,6 @@
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
-import fitz
+import fitz  # PyMuPDF
 import re
 from jinja2 import Template
 import smtplib
@@ -12,10 +12,13 @@ import os
 import time
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins=["http://localhost:3000"])
 
 uploads = {}
 stop_flags = {}
+
+UPLOAD_FOLDER = 'uploads'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 @app.route('/upload', methods=['POST'])
 def upload_files():
@@ -27,9 +30,11 @@ def upload_files():
     sender_password = request.form['senderPassword']
     position = request.form['position']
 
-    pdf_path = "contacts.pdf"
-    template_path = "template.txt"
-    resume_path = "resume.pdf"
+    # Safe file paths
+    email_key = sender_email.replace('@', '_at_').replace('.', '_')
+    pdf_path = os.path.join(UPLOAD_FOLDER, f'{email_key}_contacts.pdf')
+    template_path = os.path.join(UPLOAD_FOLDER, f'{email_key}_template.txt')
+    resume_path = os.path.join(UPLOAD_FOLDER, f'{email_key}_resume.pdf')
 
     pdf_file.save(pdf_path)
     template_file.save(template_path)
@@ -45,7 +50,7 @@ def upload_files():
 
     stop_flags[sender_email] = False
 
-    return jsonify({"message": "Files uploaded. Sending will begin..."})
+    return jsonify({"message": "Files uploaded successfully."})
 
 @app.route('/stop-sending', methods=['GET'])
 def stop_sending():
@@ -60,60 +65,63 @@ def send_emails():
         return jsonify({"error": "No upload found for this sender."}), 400
 
     info = uploads[sender_email]
-    doc = fitz.open(info["pdf"])
-    email_set = set()
-    for page in doc:
-        text = page.get_text()
-        emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
-        email_set.update(emails)
 
-    with open(info["template"], encoding='utf-8') as f:
-        template_content = f.read()
+    try:
+        doc = fitz.open(info["pdf"])
+        email_set = set()
+        for page in doc:
+            text = page.get_text()
+            emails = re.findall(r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", text)
+            email_set.update(emails)
 
-    template = Template(template_content)
-    rendered_email = template.render(name="HR", position=info["position"])
+        def generate():
+            for to_email in email_set:
+                if stop_flags.get(sender_email):
+                    yield f"data: Sending stopped by user.\n\n"
+                    break
 
-    def generate():
-        for to_email in email_set:
-            if stop_flags.get(sender_email):
-                yield f"data: Sending stopped by user.\n\n"
-                print(f"Sending stopped by user: {sender_email}")
-                break
+                # Load the actual uploaded template
+                with open(info["template"], encoding='utf-8') as f:
+                    template_content = f.read()
+                template = Template(template_content)
+                rendered_email = template.render(name="HR", position=info["position"])
 
-            msg = MIMEMultipart()
-            msg["Subject"] = f"Application for {info['position']} Position"
-            msg["From"] = sender_email
-            msg["To"] = to_email
+                msg = MIMEMultipart()
+                msg["Subject"] = f"Application for {info['position']} Position"
+                msg["From"] = sender_email
+                msg["To"] = to_email
 
-            msg.attach(MIMEText(rendered_email, "plain", "utf-8"))
+                msg.attach(MIMEText(rendered_email, "plain", "utf-8"))
 
-            with open(info["resume"], "rb") as f:
-                part = MIMEBase("application", "octet-stream")
-                part.set_payload(f.read())
-                encoders.encode_base64(part)
-                part.add_header("Content-Disposition", f"attachment; filename=resume.pdf")
-                msg.attach(part)
+                with open(info["resume"], "rb") as f:
+                    part = MIMEBase("application", "octet-stream")
+                    part.set_payload(f.read())
+                    encoders.encode_base64(part)
+                    part.add_header("Content-Disposition", f"attachment; filename=resume.pdf")
+                    msg.attach(part)
 
-            try:
-                with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-                    server.login(sender_email, info["password"])
-                    server.sendmail(sender_email, to_email, msg.as_string())
-                print(f"Sent to {to_email}")
-                yield f"data: Sent to {to_email}\n\n"
-            except Exception as e:
-                print(f"Error sending to {to_email}: {e}")
-                yield f"data: Failed to send to {to_email}: {e}\n\n"
+                try:
+                    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+                        server.login(sender_email, info["password"])
+                        server.sendmail(sender_email, to_email, msg.as_string())
+                    yield f"data: Sent to {to_email}\n\n"
+                except Exception as e:
+                    yield f"data: Failed to send to {to_email}: {e}\n\n"
 
-            time.sleep(0.5)
+                time.sleep(0.5)
 
-        os.remove(info["pdf"])
-        os.remove(info["template"])
-        os.remove(info["resume"])
-        uploads.pop(sender_email, None)
-        stop_flags.pop(sender_email, None)
-        yield f"data: DONE\n\n"
+            # Clean up
+            os.remove(info["pdf"])
+            os.remove(info["template"])
+            os.remove(info["resume"])
+            uploads.pop(sender_email, None)
+            stop_flags.pop(sender_email, None)
+            yield f"data: DONE\n\n"
 
-    return Response(generate(), mimetype='text/event-stream')
+        return Response(generate(), mimetype='text/event-stream')
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000)), debug=False)
