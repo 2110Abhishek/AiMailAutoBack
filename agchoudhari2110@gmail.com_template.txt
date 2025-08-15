@@ -1,0 +1,16 @@
+Subject: Application for Opportunities at your company
+
+Dear Sir/Mam,
+
+I hope you're doing well. I'm reaching out to express my interest in the {{ position }} role at your company.
+
+As a recent graduate with hands-on experience in Java, Spring Boot, React, Node.js, SQl ,Mongo DB and AWS, I'm eager to bring value to your team.
+
+I've attached my resume for your reference, and I would be truly grateful for the opportunity to discuss any suitable roles further.
+
+Thank you for your time and consideration.
+
+Best regards,  
+Abhishek Choudhari  
+9370165188  
+agchoudhari2110@gmail.com

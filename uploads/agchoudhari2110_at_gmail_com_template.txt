@@ -1,16 +1,14 @@
-Subject: Application for Opportunities at {{ company or "your company" }}
+Subject: Application for Opportunities at {{ company }}
 
 Dear Sir/Mam,
 
-I hope you're doing well. I'm reaching out to express my interest in the {{ position }} role at your company.
+I hope you're doing well. I'm reaching out to express my interest in the {{ position }} role at {{ company }}.
 
 As a recent graduate with hands-on experience in Java, Spring Boot, React, Node.js, and AWS, I'm eager to bring value to your team.
 
-My training and projects have equipped me to quickly adapt and contribute without requiring extensive onboarding. I am enthusiastic about the chance to learn and grow while making a positive impact.
-
 I've attached my resume for your reference, and I would be truly grateful for the opportunity to discuss any suitable roles further.
 
-Abhishek
+Thank you for your time and consideration.
 
 Best regards,  
 Abhishek Choudhari  
